@@ -1,0 +1,616 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  TrendingUp, 
+  History, 
+  Trophy, 
+  User, 
+  Zap, 
+  Activity, 
+  Calendar, 
+  DollarSign, 
+  RefreshCcw, 
+  ShieldCheck,
+  ChevronRight,
+  AlertTriangle
+} from 'lucide-react';
+
+/**
+ * John SmithEX - Neo-futuristic Back-Market Simulation
+ * * Design Philosophy:
+ * - Glassmorphism & Neon accents
+ * - Instant gratification (Click -> Result)
+ * - Gamified Trading
+ */
+
+// --- Constants & Mock Data ---
+
+const ASSETS = [
+  { id: 'SOL', name: 'Solana', color: 'from-purple-500 to-indigo-500', volatility: 1.5 },
+  { id: 'AVAX', name: 'Avalanche', color: 'from-red-500 to-rose-600', volatility: 1.4 },
+  { id: 'DOGE', name: 'Dogecoin', color: 'from-yellow-400 to-orange-500', volatility: 2.2 },
+  { id: 'ETH', name: 'Ethereum', color: 'from-slate-400 to-slate-600', volatility: 0.8 },
+  { id: 'BTC', name: 'Bitcoin', color: 'from-orange-400 to-orange-600', volatility: 0.6 },
+];
+
+const PERIODS = [
+  { label: '24H', days: 1 },
+  { label: '7D', days: 7 },
+  { label: '30D', days: 30 },
+  { label: '90D', days: 90 },
+];
+
+const INITIAL_BALANCE = 10000;
+
+// Mock Leaderboard Data
+const MOCK_LEADERBOARD = [
+  { id: 1, handle: 'Whale_Hunter', profit: 45200, winRate: 68, plays: 142 },
+  { id: 2, handle: 'DiamondHands', profit: 32150, winRate: 54, plays: 89 },
+  { id: 3, handle: 'JohnDoe_KR', profit: 12400, winRate: 42, plays: 312 },
+  { id: 4, handle: 'Satoshi_V', profit: 9800, winRate: 71, plays: 45 },
+  { id: 5, handle: 'ToTheMoon', profit: -500, winRate: 30, plays: 22 },
+];
+
+// --- Utility Functions ---
+
+const formatMoney = (amount) => {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0
+  }).format(amount);
+};
+
+const formatDate = (date) => {
+  return new Date(date).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' });
+};
+
+// Simulate "Back-Market" Data Retrieval
+// In a real app, this would query a historical price DB based on a random seed
+const simulateMarketResult = (assetId, days) => {
+  const asset = ASSETS.find(a => a.id === assetId);
+  
+  // Random date between 2020 and 2023
+  const startTimestamp = new Date(2020, 0, 1).getTime();
+  const endTimestamp = new Date(2023, 11, 31).getTime();
+  const randomStart = new Date(startTimestamp + Math.random() * (endTimestamp - startTimestamp));
+  const randomEnd = new Date(randomStart.getTime() + days * 24 * 60 * 60 * 1000);
+  
+  // Simulate ROI based on volatility + randomness (biased slightly negative/positive)
+  // Logic: (Random(-1 to 1) * Volatility * sqrt(days))
+  const noise = (Math.random() - 0.48); // Slightly positive bias for fun
+  const volatilityFactor = asset.volatility * Math.sqrt(days);
+  const roi = noise * volatilityFactor * 10; // Simple simulation formula
+
+  // Generate a fake hash for "Fairness"
+  const hash = Array.from({length: 16}, () => Math.floor(Math.random()*16).toString(16)).join('');
+
+  return {
+    startDate: randomStart,
+    endDate: randomEnd,
+    roi: parseFloat(roi.toFixed(2)),
+    hash: `server_seed_${hash}...`
+  };
+};
+
+// --- Components ---
+
+const GlitchText = ({ text, active }) => {
+  if (!active) return <span>{text}</span>;
+  return (
+    <span className="relative inline-block animate-pulse text-cyan-400">
+      <span className="absolute top-0 left-0 -ml-0.5 translate-x-[2px] text-red-500 opacity-70 animate-glitch-1">{text}</span>
+      <span className="absolute top-0 left-0 -ml-0.5 -translate-x-[2px] text-blue-500 opacity-70 animate-glitch-2">{text}</span>
+      {text}
+    </span>
+  );
+};
+
+const Card = ({ children, className = "", onClick, active = false }) => (
+  <div 
+    onClick={onClick}
+    className={`
+      relative overflow-hidden rounded-xl border transition-all duration-300 backdrop-blur-md
+      ${active 
+        ? 'border-cyan-500/50 bg-cyan-900/20 shadow-[0_0_20px_rgba(6,182,212,0.2)]' 
+        : 'border-white/10 bg-slate-900/40 hover:border-white/20 hover:bg-slate-800/40'}
+      ${className}
+    `}
+  >
+    {active && <div className="absolute inset-0 bg-gradient-to-tr from-cyan-500/10 to-transparent pointer-events-none" />}
+    {children}
+  </div>
+);
+
+const NavButton = ({ icon: Icon, label, active, onClick }) => (
+  <button 
+    onClick={onClick}
+    className={`flex flex-col items-center justify-center w-full py-3 transition-colors ${
+      active ? 'text-cyan-400' : 'text-slate-500 hover:text-slate-300'
+    }`}
+  >
+    <Icon size={24} strokeWidth={active ? 2.5 : 2} className={active ? "drop-shadow-[0_0_8px_rgba(34,211,238,0.8)]" : ""} />
+    <span className="text-[10px] mt-1 font-mono uppercase tracking-wider">{label}</span>
+  </button>
+);
+
+// --- Main Application ---
+
+export default function JohnSmithEX() {
+  const [activeTab, setActiveTab] = useState('bet');
+  const [user, setUser] = useState({
+    balance: INITIAL_BALANCE,
+    plays: 0,
+    wins: 0,
+    history: []
+  });
+
+  // Betting State
+  const [selectedAsset, setSelectedAsset] = useState(ASSETS[0]);
+  const [selectedPeriod, setSelectedPeriod] = useState(PERIODS[1]); // 7D default
+  const [betAmount, setBetAmount] = useState(100);
+  
+  // Game State
+  const [gameState, setGameState] = useState('idle'); // idle, spinning, result
+  const [result, setResult] = useState(null);
+
+  // Animations & Refs
+  const resultRef = useRef(null);
+
+  const handleExecute = () => {
+    if (user.balance < betAmount) {
+      alert("포인트가 부족합니다!");
+      return;
+    }
+
+    setGameState('spinning');
+    
+    // Simulate network/calculation delay (The "Ttalgak" feeling)
+    setTimeout(() => {
+      const simResult = simulateMarketResult(selectedAsset.id, selectedPeriod.days);
+      const pnl = betAmount * (simResult.roi / 100);
+      const isWin = pnl >= 0;
+
+      const newHistoryItem = {
+        id: Date.now(),
+        asset: selectedAsset,
+        period: selectedPeriod,
+        bet: betAmount,
+        ...simResult,
+        pnl: pnl,
+        result: isWin ? 'WIN' : 'LOSS',
+        timestamp: new Date()
+      };
+
+      setResult(newHistoryItem);
+      setUser(prev => ({
+        ...prev,
+        balance: prev.balance + pnl,
+        plays: prev.plays + 1,
+        wins: isWin ? prev.wins + 1 : prev.wins,
+        history: [newHistoryItem, ...prev.history]
+      }));
+
+      setGameState('result');
+    }, 1200); // 1.2s tension
+  };
+
+  const resetGame = () => {
+    setGameState('idle');
+    setResult(null);
+  };
+
+  const renderBetScreen = () => (
+    <div className="space-y-6 pb-24 animate-fadeIn">
+      {/* Header */}
+      <div className="flex justify-between items-center mb-2">
+        <div>
+          <h2 className="text-xs text-slate-400 font-mono tracking-widest uppercase mb-1">Current Balance</h2>
+          <div className="text-3xl font-bold font-mono text-white tracking-tighter drop-shadow-lg">
+            {formatMoney(user.balance)}
+            <span className="text-sm text-cyan-500 ml-1">PTS</span>
+          </div>
+        </div>
+        <div className="px-3 py-1 rounded-full bg-slate-800/80 border border-slate-700 text-xs font-mono text-slate-300">
+          PROTOTYPE v0.9
+        </div>
+      </div>
+
+      {/* Asset Selection */}
+      <section>
+        <div className="flex items-center gap-2 mb-3">
+          <Activity size={16} className="text-cyan-400" />
+          <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider">Select Asset</h3>
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          {ASSETS.map(asset => (
+            <Card 
+              key={asset.id} 
+              active={selectedAsset.id === asset.id} 
+              onClick={() => setSelectedAsset(asset)}
+              className="p-3 cursor-pointer group"
+            >
+              <div className={`w-8 h-8 rounded-full mb-2 bg-gradient-to-br ${asset.color} opacity-80 group-hover:opacity-100 shadow-lg`} />
+              <div className="font-bold text-sm text-white">{asset.id}</div>
+              <div className="text-[10px] text-slate-400">Vol: {asset.volatility}x</div>
+            </Card>
+          ))}
+        </div>
+      </section>
+
+      {/* Duration Selection */}
+      <section>
+        <div className="flex items-center gap-2 mb-3">
+          <History size={16} className="text-cyan-400" />
+          <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider">Time Travel Period</h3>
+        </div>
+        <div className="flex bg-slate-900/50 p-1 rounded-lg border border-white/5">
+          {PERIODS.map(period => (
+            <button
+              key={period.label}
+              onClick={() => setSelectedPeriod(period)}
+              className={`flex-1 py-2 text-xs font-mono font-bold rounded-md transition-all ${
+                selectedPeriod.label === period.label 
+                  ? 'bg-slate-700 text-cyan-400 shadow-md ring-1 ring-cyan-500/30' 
+                  : 'text-slate-500 hover:text-slate-300'
+              }`}
+            >
+              {period.label}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {/* Bet Amount */}
+      <section>
+        <div className="flex justify-between items-center mb-3">
+          <div className="flex items-center gap-2">
+            <DollarSign size={16} className="text-cyan-400" />
+            <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider">Bet Amount</h3>
+          </div>
+          <span className="text-xs text-cyan-500 font-mono">Max: {formatMoney(2000)}</span>
+        </div>
+        <div className="bg-slate-900/50 p-4 rounded-xl border border-white/10">
+          <div className="flex justify-between items-end mb-4">
+            <span className="text-2xl font-bold font-mono text-white">{betAmount}</span>
+            <span className="text-xs text-slate-500 mb-1">PTS</span>
+          </div>
+          <input 
+            type="range" 
+            min="10" 
+            max="2000" 
+            step="10" 
+            value={betAmount} 
+            onChange={(e) => setBetAmount(parseInt(e.target.value))}
+            className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+          />
+          <div className="flex justify-between mt-2">
+            <button onClick={() => setBetAmount(100)} className="text-[10px] px-2 py-1 rounded bg-slate-800 text-slate-400 hover:text-white border border-slate-700">Min</button>
+            <button onClick={() => setBetAmount(500)} className="text-[10px] px-2 py-1 rounded bg-slate-800 text-slate-400 hover:text-white border border-slate-700">500</button>
+            <button onClick={() => setBetAmount(1000)} className="text-[10px] px-2 py-1 rounded bg-slate-800 text-slate-400 hover:text-white border border-slate-700">1K</button>
+            <button onClick={() => setBetAmount(2000)} className="text-[10px] px-2 py-1 rounded bg-slate-800 text-slate-400 hover:text-white border border-slate-700">Max</button>
+          </div>
+        </div>
+      </section>
+
+      {/* EXECUTE Button (The "Ttalgak") */}
+      <button
+        onClick={handleExecute}
+        disabled={gameState === 'spinning'}
+        className={`
+          w-full py-4 rounded-xl font-bold text-lg uppercase tracking-widest transition-all duration-200
+          shadow-[0_0_20px_rgba(6,182,212,0.3)]
+          ${gameState === 'spinning' 
+            ? 'bg-slate-800 text-slate-500 cursor-wait border border-slate-700' 
+            : 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white border-t border-white/20 active:scale-[0.98] active:shadow-none'}
+        `}
+      >
+        <div className="flex items-center justify-center gap-2">
+          {gameState === 'spinning' ? (
+             <RefreshCcw className="animate-spin" size={20} />
+          ) : (
+             <Zap className={gameState === 'spinning' ? '' : "animate-pulse"} size={20} fill="currentColor" />
+          )}
+          <span>{gameState === 'spinning' ? 'SYNCING TIME...' : 'EXECUTE'}</span>
+        </div>
+      </button>
+
+      {/* Info Note */}
+      <div className="text-center">
+        <p className="text-[10px] text-slate-600 font-mono">
+          System selects random past block for settlement.
+          <br/>Provably Fair Algorithm v0.9 active.
+        </p>
+      </div>
+    </div>
+  );
+
+  const renderResultModal = () => {
+    if (gameState !== 'result' || !result) return null;
+    const isWin = result.pnl >= 0;
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+        <div className="w-full max-w-sm bg-slate-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden relative">
+          
+          {/* Top Bar Decoration */}
+          <div className={`h-1 w-full ${isWin ? 'bg-green-500' : 'bg-rose-500'} shadow-[0_0_15px_currentColor]`} />
+
+          <div className="p-6 text-center space-y-6">
+            
+            {/* Header */}
+            <div>
+              <h2 className="text-xs text-slate-400 font-mono uppercase tracking-[0.2em] mb-2">Back-Market Result</h2>
+              <div className={`text-4xl font-black italic tracking-tighter ${isWin ? 'text-green-400 drop-shadow-[0_0_10px_rgba(74,222,128,0.5)]' : 'text-rose-500 drop-shadow-[0_0_10px_rgba(244,63,94,0.5)]'}`}>
+                {isWin ? 'PROFIT' : 'LOSS'}
+              </div>
+            </div>
+
+            {/* Numbers */}
+            <div className="py-4 border-y border-dashed border-white/10 relative">
+              <div className="grid grid-cols-2 gap-4">
+                 <div>
+                    <div className="text-[10px] text-slate-500 uppercase font-mono">ROI %</div>
+                    <div className={`text-xl font-bold font-mono ${result.roi >= 0 ? 'text-green-400' : 'text-rose-400'}`}>
+                      {result.roi > 0 ? '+' : ''}{result.roi}%
+                    </div>
+                 </div>
+                 <div>
+                    <div className="text-[10px] text-slate-500 uppercase font-mono">Settlement</div>
+                    <div className={`text-xl font-bold font-mono ${isWin ? 'text-green-400' : 'text-rose-400'}`}>
+                      {result.pnl > 0 ? '+' : ''}{result.pnl.toFixed(0)}
+                    </div>
+                 </div>
+              </div>
+            </div>
+
+            {/* Time Travel Info */}
+            <div className="bg-black/40 rounded-lg p-3 text-left space-y-2 border border-white/5">
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-500">Asset</span>
+                <span className="text-slate-200 font-bold">{result.asset.name}</span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                 <span className="text-slate-500">Start Date</span>
+                 <span className="text-slate-300 font-mono">{formatDate(result.startDate)}</span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                 <span className="text-slate-500">End Date</span>
+                 <span className="text-slate-300 font-mono">{formatDate(result.endDate)}</span>
+              </div>
+            </div>
+            
+            {/* Fairness Hash */}
+            <div className="flex items-center gap-2 justify-center opacity-50">
+               <ShieldCheck size={10} className="text-cyan-600" />
+               <code className="text-[8px] text-slate-600 truncate max-w-[200px]">{result.hash}</code>
+            </div>
+
+            {/* Action Buttons */}
+            <button 
+              onClick={resetGame}
+              className="w-full py-3 bg-white text-black font-bold uppercase rounded-lg hover:bg-slate-200 transition active:scale-95"
+            >
+              Play Again
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderLeaderboard = () => (
+    <div className="pb-24 animate-fadeIn">
+      <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+        <Trophy className="text-yellow-400" /> Leaderboard
+      </h2>
+      
+      {/* Filters */}
+      <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide">
+        {['Daily', 'Weekly', 'All-Time'].map((filter, i) => (
+          <button key={filter} className={`px-4 py-1 rounded-full text-xs font-bold border ${i === 2 ? 'bg-cyan-900/30 border-cyan-500/50 text-cyan-400' : 'bg-transparent border-slate-700 text-slate-500'}`}>
+            {filter}
+          </button>
+        ))}
+      </div>
+
+      {/* List */}
+      <div className="space-y-2">
+        {MOCK_LEADERBOARD.map((entry, idx) => (
+          <div key={entry.id} className="flex items-center justify-between p-3 bg-slate-800/40 border border-white/5 rounded-lg backdrop-blur-sm">
+            <div className="flex items-center gap-3">
+              <div className={`w-6 h-6 flex items-center justify-center text-xs font-bold rounded ${idx === 0 ? 'bg-yellow-500 text-black' : idx === 1 ? 'bg-slate-300 text-black' : idx === 2 ? 'bg-orange-700 text-white' : 'bg-slate-800 text-slate-500'}`}>
+                {idx + 1}
+              </div>
+              <div>
+                <div className="text-sm font-bold text-slate-200">{entry.handle}</div>
+                <div className="text-[10px] text-slate-500">{entry.plays} Plays • WinRate {entry.winRate}%</div>
+              </div>
+            </div>
+            <div className={`text-sm font-mono font-bold ${entry.profit > 0 ? 'text-green-400' : 'text-rose-500'}`}>
+              {entry.profit > 0 ? '+' : ''}{formatMoney(entry.profit)}
+            </div>
+          </div>
+        ))}
+        {/* User Rank (Mock) */}
+        <div className="mt-6 p-3 bg-cyan-900/20 border border-cyan-500/30 rounded-lg flex items-center justify-between relative overflow-hidden">
+          <div className="absolute left-0 top-0 bottom-0 w-1 bg-cyan-500" />
+          <div className="flex items-center gap-3 pl-2">
+             <div className="text-xs font-bold text-cyan-400">#99+</div>
+             <div className="text-sm font-bold text-white">You</div>
+          </div>
+          <div className="text-sm font-mono font-bold text-white">{formatMoney(user.balance - INITIAL_BALANCE)}</div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderProfile = () => (
+    <div className="pb-24 animate-fadeIn">
+      {/* Header Profile */}
+      <div className="flex items-center gap-4 mb-8">
+        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 border-2 border-cyan-500/50 flex items-center justify-center shadow-[0_0_15px_rgba(6,182,212,0.3)]">
+          <User size={32} className="text-cyan-400" />
+        </div>
+        <div>
+          <h2 className="text-xl font-bold text-white">Player_One</h2>
+          <div className="flex items-center gap-2 mt-1">
+             <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-900 text-cyan-400 border border-cyan-700">LVL 01</span>
+             <span className="text-xs text-slate-500">ID: #8821a</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Stats Grid */}
+      <div className="grid grid-cols-2 gap-3 mb-8">
+        <div className="bg-slate-800/40 p-3 rounded-xl border border-white/5">
+           <div className="text-[10px] text-slate-500 uppercase mb-1">Total Plays</div>
+           <div className="text-lg font-bold text-white">{user.plays}</div>
+        </div>
+        <div className="bg-slate-800/40 p-3 rounded-xl border border-white/5">
+           <div className="text-[10px] text-slate-500 uppercase mb-1">Win Rate</div>
+           <div className="text-lg font-bold text-white">
+             {user.plays > 0 ? ((user.wins / user.plays) * 100).toFixed(0) : 0}%
+           </div>
+        </div>
+        <div className="bg-slate-800/40 p-3 rounded-xl border border-white/5 col-span-2">
+           <div className="text-[10px] text-slate-500 uppercase mb-1">Net Profit</div>
+           <div className={`text-xl font-mono font-bold ${user.balance >= INITIAL_BALANCE ? 'text-green-400' : 'text-rose-500'}`}>
+             {formatMoney(user.balance - INITIAL_BALANCE)}
+           </div>
+        </div>
+      </div>
+
+      {/* History */}
+      <div>
+        <h3 className="text-sm font-bold text-slate-300 mb-3 flex items-center gap-2">
+          <Activity size={14} /> Recent History
+        </h3>
+        {user.history.length === 0 ? (
+          <div className="text-center py-8 text-slate-600 text-xs">No simulation history yet.</div>
+        ) : (
+          <div className="space-y-2">
+            {user.history.map((item) => (
+              <div key={item.id} className="p-3 bg-slate-900 border border-white/5 rounded-lg flex justify-between items-center hover:border-white/10 transition">
+                <div className="flex items-center gap-3">
+                  <div className={`w-1 h-8 rounded-full ${item.pnl >= 0 ? 'bg-green-500' : 'bg-rose-500'}`} />
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold text-slate-200">{item.asset.id}</span>
+                      <span className="text-[10px] px-1.5 rounded bg-slate-800 text-slate-400">{item.period.label}</span>
+                    </div>
+                    <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+                       {formatDate(item.startDate)}
+                    </div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className={`text-sm font-mono font-bold ${item.pnl >= 0 ? 'text-green-400' : 'text-rose-500'}`}>
+                    {item.pnl > 0 ? '+' : ''}{item.pnl.toFixed(0)}
+                  </div>
+                  <div className={`text-[10px] font-mono ${item.roi >= 0 ? 'text-green-500/70' : 'text-rose-500/70'}`}>
+                    {item.roi}%
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-200 font-sans select-none overflow-hidden relative">
+      {/* Cyberpunk Scanline Overlay */}
+      <div className="fixed inset-0 pointer-events-none z-0 opacity-5 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] bg-[length:100%_2px,3px_100%]"></div>
+      
+      {/* Ambient Background Glow */}
+      <div className="fixed -top-40 -right-40 w-96 h-96 bg-cyan-600/20 rounded-full blur-[100px] pointer-events-none" />
+      <div className="fixed -bottom-40 -left-40 w-96 h-96 bg-purple-600/20 rounded-full blur-[100px] pointer-events-none" />
+
+      {/* Main Container */}
+      <main className="relative z-10 max-w-md mx-auto h-screen flex flex-col bg-slate-950/80 shadow-2xl border-x border-white/5">
+        
+        {/* Header */}
+        <header className="p-4 border-b border-white/5 bg-slate-900/50 backdrop-blur-md sticky top-0 z-20 flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-cyan-500 rounded-lg flex items-center justify-center font-black text-slate-900 transform -skew-x-12 shadow-[0_0_10px_rgba(6,182,212,0.5)]">
+              EX
+            </div>
+            <h1 className="text-lg font-bold tracking-tight text-white">
+              <span className="text-slate-400">John</span>Smith<span className="text-cyan-400">EX</span>
+            </h1>
+          </div>
+          <div className="flex items-center gap-2 text-xs font-mono text-cyan-500">
+             <div className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
+             LIVE
+          </div>
+        </header>
+
+        {/* Content Area */}
+        <div className="flex-1 overflow-y-auto p-4 scrollbar-hide">
+          {activeTab === 'bet' && renderBetScreen()}
+          {activeTab === 'leaderboard' && renderLeaderboard()}
+          {activeTab === 'profile' && renderProfile()}
+        </div>
+
+        {/* Bottom Navigation */}
+        <nav className="border-t border-white/10 bg-slate-900/90 backdrop-blur-xl absolute bottom-0 w-full z-30 pb-safe">
+          <div className="grid grid-cols-3 h-16">
+            <NavButton 
+              icon={TrendingUp} 
+              label="Bet" 
+              active={activeTab === 'bet'} 
+              onClick={() => setActiveTab('bet')} 
+            />
+            <NavButton 
+              icon={Trophy} 
+              label="Rank" 
+              active={activeTab === 'leaderboard'} 
+              onClick={() => setActiveTab('leaderboard')} 
+            />
+            <NavButton 
+              icon={User} 
+              label="Profile" 
+              active={activeTab === 'profile'} 
+              onClick={() => setActiveTab('profile')} 
+            />
+          </div>
+        </nav>
+
+        {/* Modals */}
+        {renderResultModal()}
+
+      </main>
+
+      {/* Styles for Animations */}
+      <style jsx global>{`
+        @keyframes glitch-1 {
+          0% { clip-path: inset(20% 0 80% 0); }
+          20% { clip-path: inset(60% 0 10% 0); }
+          40% { clip-path: inset(40% 0 50% 0); }
+          60% { clip-path: inset(80% 0 5% 0); }
+          80% { clip-path: inset(10% 0 60% 0); }
+          100% { clip-path: inset(30% 0 30% 0); }
+        }
+        @keyframes glitch-2 {
+          0% { clip-path: inset(10% 0 60% 0); }
+          20% { clip-path: inset(30% 0 20% 0); }
+          40% { clip-path: inset(70% 0 10% 0); }
+          60% { clip-path: inset(20% 0 50% 0); }
+          80% { clip-path: inset(60% 0 30% 0); }
+          100% { clip-path: inset(5% 0 80% 0); }
+        }
+        .animate-glitch-1 { animation: glitch-1 2s infinite linear alternate-reverse; }
+        .animate-glitch-2 { animation: glitch-2 2s infinite linear alternate-reverse; }
+        .animate-fadeIn { animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+        
+        /* Scrollbar Hide */
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+      `}</style>
+    </div>
+  );
+}
