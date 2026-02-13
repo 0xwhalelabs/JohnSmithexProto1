@@ -1,622 +1,28 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { 
-  TrendingUp, 
-  History, 
-  Trophy, 
-  User, 
-  Zap, 
-  Activity, 
-  Calendar, 
-  DollarSign, 
-  RefreshCcw, 
-  ShieldCheck,
-  ChevronRight,
-  AlertTriangle,
-  Flame // Added for Streak/Hype
-} from 'lucide-react';
-
-/**
- * John SmithEX - Neo-futuristic Back-Market Simulation
- * * Design Philosophy:
- * - Glassmorphism & Neon accents
- * - Instant gratification (Click -> Result)
- * - Gamified Trading (Streak System Added)
- */
-
-// --- Constants & Mock Data ---
-
-const ASSETS = [
-  { id: 'SOL', name: 'Solana', color: 'from-purple-500 to-indigo-500', volatility: 1.8 }, // Volatility increased for hype
-  { id: 'AVAX', name: 'Avalanche', color: 'from-red-500 to-rose-600', volatility: 1.6 },
-  { id: 'DOGE', name: 'Dogecoin', color: 'from-yellow-400 to-orange-500', volatility: 2.5 },
-  { id: 'ETH', name: 'Ethereum', color: 'from-slate-400 to-slate-600', volatility: 1.0 },
-  { id: 'BTC', name: 'Bitcoin', color: 'from-orange-400 to-orange-600', volatility: 0.8 },
-];
-
-const PERIODS = [
-  { label: '24H', days: 1 },
-  { label: '7D', days: 7 },
-  { label: '30D', days: 30 },
-  { label: '90D', days: 90 },
-];
-
-const INITIAL_BALANCE = 10000;
-
-// Mock Leaderboard Data
-const MOCK_LEADERBOARD = [
-  { id: 1, handle: 'Whale_Hunter', profit: 45200, winRate: 68, plays: 142 },
-  { id: 2, handle: 'DiamondHands', profit: 32150, winRate: 54, plays: 89 },
-  { id: 3, handle: 'JohnDoe_KR', profit: 12400, winRate: 42, plays: 312 },
-  { id: 4, handle: 'Satoshi_V', profit: 9800, winRate: 71, plays: 45 },
-  { id: 5, handle: 'ToTheMoon', profit: -500, winRate: 30, plays: 22 },
-];
-
-// --- Utility Functions ---
-
-const formatMoney = (amount) => {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 0
-  }).format(amount);
-};
-
-const formatDate = (date) => {
-  return new Date(date).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' });
-};
-
-// Simulate "Back-Market" Data Retrieval
-const simulateMarketResult = (assetId, days) => {
-  const asset = ASSETS.find(a => a.id === assetId);
-  
-  // Random date between 2020 and 2023
-  const startTimestamp = new Date(2020, 0, 1).getTime();
-  const endTimestamp = new Date(2023, 11, 31).getTime();
-  const randomStart = new Date(startTimestamp + Math.random() * (endTimestamp - startTimestamp));
-  const randomEnd = new Date(randomStart.getTime() + days * 24 * 60 * 60 * 1000);
-  
-  // Simulate ROI based on volatility + randomness
-  // Hype Logic: Slightly more extreme outcomes to make it exciting
-  const noise = (Math.random() - 0.48) * 1.2; 
-  const volatilityFactor = asset.volatility * Math.sqrt(days);
-  const roi = noise * volatilityFactor * 10;
-
-  // Generate a fake hash for "Fairness"
-  const hash = Array.from({length: 16}, () => Math.floor(Math.random()*16).toString(16)).join('');
-
-  return {
-    startDate: randomStart,
-    endDate: randomEnd,
-    roi: parseFloat(roi.toFixed(2)),
-    hash: `server_seed_${hash}...`
-  };
-};
-
-// --- Components ---
-
-const GlitchText = ({ text, active }) => {
-  if (!active) return <span>{text}</span>;
-  return (
-    <span className="relative inline-block animate-pulse text-cyan-400">
-      <span className="absolute top-0 left-0 -ml-0.5 translate-x-[2px] text-red-500 opacity-70 animate-glitch-1">{text}</span>
-      <span className="absolute top-0 left-0 -ml-0.5 -translate-x-[2px] text-blue-500 opacity-70 animate-glitch-2">{text}</span>
-      {text}
-    </span>
-  );
-};
-
-const Card = ({ children, className = "", onClick, active = false }) => (
-  <div 
-    onClick={onClick}
-    className={`
-      relative overflow-hidden rounded-xl border transition-all duration-300 backdrop-blur-md
-      ${active 
-        ? 'border-cyan-500/50 bg-cyan-900/20 shadow-[0_0_20px_rgba(6,182,212,0.2)]' 
-        : 'border-white/10 bg-slate-900/40 hover:border-white/20 hover:bg-slate-800/40'}
-      ${className}
-    `}
-  >
-    {active && <div className="absolute inset-0 bg-gradient-to-tr from-cyan-500/10 to-transparent pointer-events-none" />}
-    {children}
-  </div>
-);
-
-const NavButton = ({ icon: Icon, label, active, onClick }) => (
-  <button 
-    onClick={onClick}
-    className={`flex flex-col items-center justify-center w-full py-3 transition-colors ${
-      active ? 'text-cyan-400' : 'text-slate-500 hover:text-slate-300'
-    }`}
-  >
-    <Icon size={24} strokeWidth={active ? 2.5 : 2} className={active ? "drop-shadow-[0_0_8px_rgba(34,211,238,0.8)]" : ""} />
-    <span className="text-[10px] mt-1 font-mono uppercase tracking-wider">{label}</span>
-  </button>
-);
-
-// --- Main Application ---
-
-export default function JohnSmithEX() {
-  const [activeTab, setActiveTab] = useState('bet');
-  const [user, setUser] = useState({
-    balance: INITIAL_BALANCE,
-    plays: 0,
-    wins: 0,
-    streak: 0, // Hype factor: Winning Streak
-    history: []
-  });
-
-  // Betting State
-  const [selectedAsset, setSelectedAsset] = useState(ASSETS[0]);
-  const [selectedPeriod, setSelectedPeriod] = useState(PERIODS[1]); // 7D default
-  const [betAmount, setBetAmount] = useState(100);
-  
-  // Game State
-  const [gameState, setGameState] = useState('idle'); // idle, spinning, result
-  const [loadingText, setLoadingText] = useState('SCANNING...');
-  const [result, setResult] = useState(null);
-
-  const handleExecute = () => {
-    if (user.balance < betAmount) {
-      alert("포인트가 부족합니다!");
-      return;
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>John SmithEX - Prototype</title>
+    
+    <!-- 1. Tailwind CSS 불러오기 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 2. 리액트 및 아이콘 사용을 위한 설정 -->
+    <script type="importmap">
+    {
+        "imports": {
+            "react": "https://esm.sh/react@18.2.0",
+            "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+            "lucide-react": "https://esm.sh/lucide-react@0.292.0"
+        }
     }
+    </script>
+    <!-- 3. 브라우저에서 JSX를 변환해주는 Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    setGameState('spinning');
-    
-    // Hype Animation: Cycle through random years/actions
-    const loadingStates = ['SCANNING 2021...', 'TARGETING...', 'FETCHING...', 'ANALYZING...'];
-    let step = 0;
-    const interval = setInterval(() => {
-      setLoadingText(loadingStates[step % loadingStates.length]);
-      step++;
-    }, 250);
-    
-    // Simulate network/calculation delay (The "Ttalgak" feeling)
-    setTimeout(() => {
-      clearInterval(interval);
-      const simResult = simulateMarketResult(selectedAsset.id, selectedPeriod.days);
-      const rawPnl = betAmount * (simResult.roi / 100);
-      const isWin = rawPnl >= 0;
-
-      // Hype Logic: Streak Bonus
-      let streakBonus = 1;
-      let newStreak = isWin ? user.streak + 1 : 0;
-      if (isWin && newStreak > 1) {
-        streakBonus = 1 + (newStreak * 0.1); // 10% bonus per streak
-      }
-      
-      const finalPnl = rawPnl * streakBonus;
-
-      const newHistoryItem = {
-        id: Date.now(),
-        asset: selectedAsset,
-        period: selectedPeriod,
-        bet: betAmount,
-        ...simResult,
-        pnl: finalPnl,
-        streakBonus: streakBonus > 1 ? streakBonus : null,
-        result: isWin ? 'WIN' : 'LOSS',
-        timestamp: new Date()
-      };
-
-      setResult(newHistoryItem);
-      setUser(prev => ({
-        ...prev,
-        balance: prev.balance + finalPnl,
-        plays: prev.plays + 1,
-        wins: isWin ? prev.wins + 1 : prev.wins,
-        streak: newStreak,
-        history: [newHistoryItem, ...prev.history]
-      }));
-
-      setGameState('result');
-    }, 1500); // Slightly longer for hype
-  };
-
-  const resetGame = () => {
-    setGameState('idle');
-    setResult(null);
-  };
-
-  const renderBetScreen = () => (
-    <div className="space-y-6 pb-24 animate-fadeIn">
-      {/* Header */}
-      <div className="flex justify-between items-center mb-2">
-        <div>
-          <h2 className="text-xs text-slate-400 font-mono tracking-widest uppercase mb-1">Current Balance</h2>
-          <div className="flex items-center gap-2">
-             <div className="text-3xl font-bold font-mono text-white tracking-tighter drop-shadow-lg transition-all duration-500">
-               {formatMoney(user.balance)}
-             </div>
-             {user.streak > 1 && (
-               <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-500/20 border border-orange-500/50 text-orange-400 text-xs font-bold animate-pulse">
-                 <Flame size={12} fill="currentColor" /> {user.streak} STREAK
-               </div>
-             )}
-          </div>
-        </div>
-        <div className="px-3 py-1 rounded-full bg-slate-800/80 border border-slate-700 text-xs font-mono text-slate-300">
-          PROTOTYPE v1.0
-        </div>
-      </div>
-
-      {/* Asset Selection */}
-      <section>
-        <div className="flex items-center gap-2 mb-3">
-          <Activity size={16} className="text-cyan-400" />
-          <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider">Select Asset</h3>
-        </div>
-        <div className="grid grid-cols-3 gap-2">
-          {ASSETS.map(asset => (
-            <Card 
-              key={asset.id} 
-              active={selectedAsset.id === asset.id} 
-              onClick={() => setSelectedAsset(asset)}
-              className="p-3 cursor-pointer group"
-            >
-              <div className={`w-8 h-8 rounded-full mb-2 bg-gradient-to-br ${asset.color} opacity-80 group-hover:opacity-100 shadow-lg`} />
-              <div className="font-bold text-sm text-white">{asset.id}</div>
-              <div className="text-[10px] text-slate-400">Vol: {asset.volatility}x</div>
-            </Card>
-          ))}
-        </div>
-      </section>
-
-      {/* Duration Selection */}
-      <section>
-        <div className="flex items-center gap-2 mb-3">
-          <History size={16} className="text-cyan-400" />
-          <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider">Time Travel Period</h3>
-        </div>
-        <div className="flex bg-slate-900/50 p-1 rounded-lg border border-white/5">
-          {PERIODS.map(period => (
-            <button
-              key={period.label}
-              onClick={() => setSelectedPeriod(period)}
-              className={`flex-1 py-2 text-xs font-mono font-bold rounded-md transition-all ${
-                selectedPeriod.label === period.label 
-                  ? 'bg-slate-700 text-cyan-400 shadow-md ring-1 ring-cyan-500/30' 
-                  : 'text-slate-500 hover:text-slate-300'
-              }`}
-            >
-              {period.label}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      {/* Bet Amount */}
-      <section>
-        <div className="flex justify-between items-center mb-3">
-          <div className="flex items-center gap-2">
-            <DollarSign size={16} className="text-cyan-400" />
-            <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider">Bet Amount</h3>
-          </div>
-          <span className="text-xs text-cyan-500 font-mono">Max: {formatMoney(2000)}</span>
-        </div>
-        <div className="bg-slate-900/50 p-4 rounded-xl border border-white/10">
-          <div className="flex justify-between items-end mb-4">
-            <span className="text-2xl font-bold font-mono text-white">{betAmount}</span>
-            <span className="text-xs text-slate-500 mb-1">PTS</span>
-          </div>
-          <input 
-            type="range" 
-            min="10" 
-            max="2000" 
-            step="10" 
-            value={betAmount} 
-            onChange={(e) => setBetAmount(parseInt(e.target.value))}
-            className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-500"
-          />
-          <div className="flex justify-between mt-2">
-            <button onClick={() => setBetAmount(100)} className="text-[10px] px-2 py-1 rounded bg-slate-800 text-slate-400 hover:text-white border border-slate-700">Min</button>
-            <button onClick={() => setBetAmount(500)} className="text-[10px] px-2 py-1 rounded bg-slate-800 text-slate-400 hover:text-white border border-slate-700">500</button>
-            <button onClick={() => setBetAmount(1000)} className="text-[10px] px-2 py-1 rounded bg-slate-800 text-slate-400 hover:text-white border border-slate-700">1K</button>
-            <button onClick={() => setBetAmount(2000)} className="text-[10px] px-2 py-1 rounded bg-slate-800 text-slate-400 hover:text-white border border-slate-700">Max</button>
-          </div>
-        </div>
-      </section>
-
-      {/* EXECUTE Button (The "Ttalgak") */}
-      <button
-        onClick={handleExecute}
-        disabled={gameState === 'spinning'}
-        className={`
-          w-full py-4 rounded-xl font-bold text-lg uppercase tracking-widest transition-all duration-200
-          shadow-[0_0_20px_rgba(6,182,212,0.3)]
-          ${gameState === 'spinning' 
-            ? 'bg-slate-800 text-cyan-400 cursor-wait border border-cyan-900/50' 
-            : 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white border-t border-white/20 active:scale-[0.98] active:shadow-none'}
-        `}
-      >
-        <div className="flex items-center justify-center gap-2">
-          {gameState === 'spinning' ? (
-             <RefreshCcw className="animate-spin" size={20} />
-          ) : (
-             <Zap className={gameState === 'spinning' ? '' : "animate-pulse"} size={20} fill="currentColor" />
-          )}
-          <span className={gameState === 'spinning' ? "animate-pulse font-mono" : ""}>
-            {gameState === 'spinning' ? loadingText : 'EXECUTE'}
-          </span>
-        </div>
-      </button>
-
-      {/* Info Note */}
-      <div className="text-center">
-        <p className="text-[10px] text-slate-600 font-mono">
-          System selects random past block for settlement.
-          <br/>Provably Fair Algorithm v0.9 active.
-        </p>
-      </div>
-    </div>
-  );
-
-  const renderResultModal = () => {
-    if (gameState !== 'result' || !result) return null;
-    const isWin = result.pnl >= 0;
-
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
-        <div className="w-full max-w-sm bg-slate-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden relative">
-          
-          {/* Top Bar Decoration */}
-          <div className={`h-1 w-full ${isWin ? 'bg-green-500' : 'bg-rose-500'} shadow-[0_0_15px_currentColor]`} />
-
-          <div className="p-6 text-center space-y-6">
-            
-            {/* Header */}
-            <div>
-              <h2 className="text-xs text-slate-400 font-mono uppercase tracking-[0.2em] mb-2">Back-Market Result</h2>
-              <div className={`text-4xl font-black italic tracking-tighter ${isWin ? 'text-green-400 drop-shadow-[0_0_10px_rgba(74,222,128,0.5)]' : 'text-rose-500 drop-shadow-[0_0_10px_rgba(244,63,94,0.5)]'}`}>
-                {isWin ? 'PROFIT' : 'LOSS'}
-              </div>
-              {result.streakBonus && (
-                 <div className="mt-2 inline-flex items-center gap-1 px-2 py-1 rounded bg-orange-500/20 text-orange-400 text-xs font-bold animate-bounce">
-                    <Flame size={12} fill="currentColor" /> STREAK BONUS x{result.streakBonus.toFixed(1)}
-                 </div>
-              )}
-            </div>
-
-            {/* Numbers */}
-            <div className="py-4 border-y border-dashed border-white/10 relative">
-              <div className="grid grid-cols-2 gap-4">
-                 <div>
-                    <div className="text-[10px] text-slate-500 uppercase font-mono">ROI %</div>
-                    <div className={`text-xl font-bold font-mono ${result.roi >= 0 ? 'text-green-400' : 'text-rose-400'}`}>
-                      {result.roi > 0 ? '+' : ''}{result.roi}%
-                    </div>
-                 </div>
-                 <div>
-                    <div className="text-[10px] text-slate-500 uppercase font-mono">Settlement</div>
-                    <div className={`text-xl font-bold font-mono ${isWin ? 'text-green-400' : 'text-rose-400'}`}>
-                      {result.pnl > 0 ? '+' : ''}{result.pnl.toFixed(0)}
-                    </div>
-                 </div>
-              </div>
-            </div>
-
-            {/* Time Travel Info */}
-            <div className="bg-black/40 rounded-lg p-3 text-left space-y-2 border border-white/5">
-              <div className="flex justify-between items-center text-xs">
-                <span className="text-slate-500">Asset</span>
-                <span className="text-slate-200 font-bold">{result.asset.name}</span>
-              </div>
-              <div className="flex justify-between items-center text-xs">
-                 <span className="text-slate-500">Target Date</span>
-                 <span className="text-cyan-400 font-mono font-bold">{formatDate(result.startDate)}</span>
-              </div>
-              <div className="flex justify-between items-center text-xs">
-                 <span className="text-slate-500">Duration</span>
-                 <span className="text-slate-300 font-mono">{result.period.label}</span>
-              </div>
-            </div>
-            
-            {/* Fairness Hash */}
-            <div className="flex items-center gap-2 justify-center opacity-50">
-               <ShieldCheck size={10} className="text-cyan-600" />
-               <code className="text-[8px] text-slate-600 truncate max-w-[200px]">{result.hash}</code>
-            </div>
-
-            {/* Action Buttons */}
-            <button 
-              onClick={resetGame}
-              className="w-full py-3 bg-white text-black font-bold uppercase rounded-lg hover:bg-slate-200 transition active:scale-95"
-            >
-              Play Again
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const renderLeaderboard = () => (
-    <div className="pb-24 animate-fadeIn">
-      <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-        <Trophy className="text-yellow-400" /> Leaderboard
-      </h2>
-      
-      {/* Filters */}
-      <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide">
-        {['Daily', 'Weekly', 'All-Time'].map((filter, i) => (
-          <button key={filter} className={`px-4 py-1 rounded-full text-xs font-bold border ${i === 2 ? 'bg-cyan-900/30 border-cyan-500/50 text-cyan-400' : 'bg-transparent border-slate-700 text-slate-500'}`}>
-            {filter}
-          </button>
-        ))}
-      </div>
-
-      {/* List */}
-      <div className="space-y-2">
-        {MOCK_LEADERBOARD.map((entry, idx) => (
-          <div key={entry.id} className="flex items-center justify-between p-3 bg-slate-800/40 border border-white/5 rounded-lg backdrop-blur-sm">
-            <div className="flex items-center gap-3">
-              <div className={`w-6 h-6 flex items-center justify-center text-xs font-bold rounded ${idx === 0 ? 'bg-yellow-500 text-black' : idx === 1 ? 'bg-slate-300 text-black' : idx === 2 ? 'bg-orange-700 text-white' : 'bg-slate-800 text-slate-500'}`}>
-                {idx + 1}
-              </div>
-              <div>
-                <div className="text-sm font-bold text-slate-200">{entry.handle}</div>
-                <div className="text-[10px] text-slate-500">{entry.plays} Plays • WinRate {entry.winRate}%</div>
-              </div>
-            </div>
-            <div className={`text-sm font-mono font-bold ${entry.profit > 0 ? 'text-green-400' : 'text-rose-500'}`}>
-              {entry.profit > 0 ? '+' : ''}{formatMoney(entry.profit)}
-            </div>
-          </div>
-        ))}
-        {/* User Rank (Mock) */}
-        <div className="mt-6 p-3 bg-cyan-900/20 border border-cyan-500/30 rounded-lg flex items-center justify-between relative overflow-hidden">
-          <div className="absolute left-0 top-0 bottom-0 w-1 bg-cyan-500" />
-          <div className="flex items-center gap-3 pl-2">
-             <div className="text-xs font-bold text-cyan-400">#99+</div>
-             <div className="text-sm font-bold text-white">You</div>
-          </div>
-          <div className="text-sm font-mono font-bold text-white">{formatMoney(user.balance - INITIAL_BALANCE)}</div>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderProfile = () => (
-    <div className="pb-24 animate-fadeIn">
-      {/* Header Profile */}
-      <div className="flex items-center gap-4 mb-8">
-        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 border-2 border-cyan-500/50 flex items-center justify-center shadow-[0_0_15px_rgba(6,182,212,0.3)]">
-          <User size={32} className="text-cyan-400" />
-        </div>
-        <div>
-          <h2 className="text-xl font-bold text-white">Player_One</h2>
-          <div className="flex items-center gap-2 mt-1">
-             <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-900 text-cyan-400 border border-cyan-700">LVL 01</span>
-             <span className="text-xs text-slate-500">ID: #8821a</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Stats Grid */}
-      <div className="grid grid-cols-2 gap-3 mb-8">
-        <div className="bg-slate-800/40 p-3 rounded-xl border border-white/5">
-           <div className="text-[10px] text-slate-500 uppercase mb-1">Total Plays</div>
-           <div className="text-lg font-bold text-white">{user.plays}</div>
-        </div>
-        <div className="bg-slate-800/40 p-3 rounded-xl border border-white/5">
-           <div className="text-[10px] text-slate-500 uppercase mb-1">Max Streak</div>
-           <div className="text-lg font-bold text-orange-400 flex items-center gap-1">
-             <Flame size={14} fill="currentColor" /> {user.streak}
-           </div>
-        </div>
-        <div className="bg-slate-800/40 p-3 rounded-xl border border-white/5 col-span-2">
-           <div className="text-[10px] text-slate-500 uppercase mb-1">Net Profit</div>
-           <div className={`text-xl font-mono font-bold ${user.balance >= INITIAL_BALANCE ? 'text-green-400' : 'text-rose-500'}`}>
-             {formatMoney(user.balance - INITIAL_BALANCE)}
-           </div>
-        </div>
-      </div>
-
-      {/* History */}
-      <div>
-        <h3 className="text-sm font-bold text-slate-300 mb-3 flex items-center gap-2">
-          <Activity size={14} /> Recent History
-        </h3>
-        {user.history.length === 0 ? (
-          <div className="text-center py-8 text-slate-600 text-xs">No simulation history yet.</div>
-        ) : (
-          <div className="space-y-2">
-            {user.history.map((item) => (
-              <div key={item.id} className="p-3 bg-slate-900 border border-white/5 rounded-lg flex justify-between items-center hover:border-white/10 transition">
-                <div className="flex items-center gap-3">
-                  <div className={`w-1 h-8 rounded-full ${item.pnl >= 0 ? 'bg-green-500' : 'bg-rose-500'}`} />
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-bold text-slate-200">{item.asset.id}</span>
-                      <span className="text-[10px] px-1.5 rounded bg-slate-800 text-slate-400">{item.period.label}</span>
-                    </div>
-                    <div className="text-[10px] text-slate-500 font-mono mt-0.5">
-                       {formatDate(item.startDate)}
-                    </div>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className={`text-sm font-mono font-bold ${item.pnl >= 0 ? 'text-green-400' : 'text-rose-500'}`}>
-                    {item.pnl > 0 ? '+' : ''}{item.pnl.toFixed(0)}
-                  </div>
-                  {item.streakBonus && (
-                    <div className="text-[8px] text-orange-400 font-bold">STREAK x{item.streakBonus.toFixed(1)}</div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-
-  return (
-    <div className="min-h-screen bg-slate-950 text-slate-200 font-sans select-none overflow-hidden relative">
-      {/* Cyberpunk Scanline Overlay */}
-      <div className="fixed inset-0 pointer-events-none z-0 opacity-5 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] bg-[length:100%_2px,3px_100%]"></div>
-      
-      {/* Ambient Background Glow */}
-      <div className="fixed -top-40 -right-40 w-96 h-96 bg-cyan-600/20 rounded-full blur-[100px] pointer-events-none" />
-      <div className="fixed -bottom-40 -left-40 w-96 h-96 bg-purple-600/20 rounded-full blur-[100px] pointer-events-none" />
-
-      {/* Main Container */}
-      <main className="relative z-10 max-w-md mx-auto h-screen flex flex-col bg-slate-950/80 shadow-2xl border-x border-white/5">
-        
-        {/* Header */}
-        <header className="p-4 border-b border-white/5 bg-slate-900/50 backdrop-blur-md sticky top-0 z-20 flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-cyan-500 rounded-lg flex items-center justify-center font-black text-slate-900 transform -skew-x-12 shadow-[0_0_10px_rgba(6,182,212,0.5)]">
-              EX
-            </div>
-            <h1 className="text-lg font-bold tracking-tight text-white">
-              <span className="text-slate-400">John</span>Smith<span className="text-cyan-400">EX</span>
-            </h1>
-          </div>
-          <div className="flex items-center gap-2 text-xs font-mono text-cyan-500">
-             <div className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
-             LIVE
-          </div>
-        </header>
-
-        {/* Content Area */}
-        <div className="flex-1 overflow-y-auto p-4 scrollbar-hide">
-          {activeTab === 'bet' && renderBetScreen()}
-          {activeTab === 'leaderboard' && renderLeaderboard()}
-          {activeTab === 'profile' && renderProfile()}
-        </div>
-
-        {/* Bottom Navigation */}
-        <nav className="border-t border-white/10 bg-slate-900/90 backdrop-blur-xl absolute bottom-0 w-full z-30 pb-safe">
-          <div className="grid grid-cols-3 h-16">
-            <NavButton 
-              icon={TrendingUp} 
-              label="Bet" 
-              active={activeTab === 'bet'} 
-              onClick={() => setActiveTab('bet')} 
-            />
-            <NavButton 
-              icon={Trophy} 
-              label="Rank" 
-              active={activeTab === 'leaderboard'} 
-              onClick={() => setActiveTab('leaderboard')} 
-            />
-            <NavButton 
-              icon={User} 
-              label="Profile" 
-              active={activeTab === 'profile'} 
-              onClick={() => setActiveTab('profile')} 
-            />
-          </div>
-        </nav>
-
-        {/* Modals */}
-        {renderResultModal()}
-
-      </main>
-
-      {/* Styles for Animations */}
-      <style jsx global>{`
+    <style>
+        /* 커스텀 애니메이션 스타일 */
         @keyframes glitch-1 {
           0% { clip-path: inset(20% 0 80% 0); }
           20% { clip-path: inset(60% 0 10% 0); }
@@ -642,7 +48,791 @@ export default function JohnSmithEX() {
         /* Scrollbar Hide */
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
-      `}</style>
-    </div>
-  );
-}
+        
+        /* Progress Bar Animation */
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+        .animate-shimmer {
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite linear;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-200">
+    <div id="root"></div>
+
+    <!-- 리액트 코드 시작 -->
+    <script type="text/babel" data-type="module">
+        import React, { useState, useEffect, useRef } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import { 
+            TrendingUp, 
+            History, 
+            Trophy, 
+            User, 
+            Zap, 
+            Activity, 
+            Calendar, 
+            DollarSign, 
+            RefreshCcw, 
+            ShieldCheck, 
+            ChevronRight, 
+            AlertTriangle,
+            Flame,
+            Gift,
+            Users,
+            Copy,
+            CheckCircle2,
+            Star,
+            Search,
+            Terminal
+        } from 'lucide-react';
+
+        /**
+         * John SmithEX - Neo-futuristic Back-Market Simulation
+         */
+
+        // --- Constants & Mock Data ---
+
+        const ASSETS = [
+            { id: 'SOL', name: 'Solana', color: 'from-purple-500 to-indigo-500', volatility: 1.8 },
+            { id: 'AVAX', name: 'Avalanche', color: 'from-red-500 to-rose-600', volatility: 1.6 },
+            { id: 'DOGE', name: 'Dogecoin', color: 'from-yellow-400 to-orange-500', volatility: 2.5 },
+            { id: 'ETH', name: 'Ethereum', color: 'from-slate-400 to-slate-600', volatility: 1.0 },
+            { id: 'BTC', name: 'Bitcoin', color: 'from-orange-400 to-orange-600', volatility: 0.8 },
+        ];
+
+        const PERIODS = [
+            { label: '24H', days: 1 },
+            { label: '7D', days: 7 },
+            { label: '30D', days: 30 },
+            { label: '90D', days: 90 },
+        ];
+
+        const INITIAL_BALANCE = 10000;
+        const REFERRAL_BONUS = 5000;
+        const DAILY_BONUS = 1000;
+
+        // Mock Leaderboard Data
+        const MOCK_LEADERBOARD = [
+            { id: 1, handle: 'Seongsu_King', profit: 45200, winRate: 68, plays: 142 },
+            { id: 2, handle: 'Gazua_82', profit: 32150, winRate: 54, plays: 89 },
+            { id: 3, handle: 'JohnDoe_KR', profit: 12400, winRate: 42, plays: 312 },
+            { id: 4, handle: 'Satoshi_Gookbab', profit: 9800, winRate: 71, plays: 45 },
+            { id: 5, handle: 'Dom_Hwang_Cha', profit: -500, winRate: 30, plays: 22 },
+        ];
+
+        // --- Utility Functions ---
+
+        const formatMoney = (amount) => {
+            return new Intl.NumberFormat('ko-KR').format(amount);
+        };
+
+        const formatDate = (date) => {
+            return new Date(date).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' });
+        };
+
+        // Helper to generate narrative based on result
+        const getNarrative = (assetId, roi, startDate) => {
+            const year = startDate.getFullYear();
+            const isWin = roi >= 0;
+            const absRoi = Math.abs(roi);
+            
+            // Special Asset Narratives
+            if (assetId === 'DOGE' && absRoi > 15) {
+                return isWin 
+                    ? "머스크 형님이 트윗 한방 시원하게 날려주셨다 ㅋㅋㅋ 도지 화성 갈끄니까~ 🚀 (개이득)"
+                    : "SNL 나가서 입 털다가 나락감 ㅋㅋㅋ 고점에 물린 흑우 없제? 🐶 (물림)";
+            }
+
+            if (assetId === 'SOL' && absRoi > 10) {
+                return isWin
+                    ? "NFT 민팅 대박남 ㅋㅋㅋ 솔라나 생태계 폭발! 이게 섹시한 코인이지 ㅇㅈ? 👍"
+                    : "네트워크 또 멈춤? ㅋㅋㅋ 툭하면 멈추누.. VC 물량 덤핑맞고 정신 혼미해짐 😵";
+            }
+
+            // General Year-based Narratives
+            if (year === 2020) {
+                return isWin 
+                    ? "코로나 빔 맞고 연준이 돈 복사기 킴 ㅋㅋㅋ 그냥 줍는 대로 돈 복사되는 '디파이 썸머' 입갤~ 🏖️"
+                    : "3월 검은 목요일... 비트가 3k를 가네 마네 하던 시절 ㄷㄷ 공포에 털렸쥬? 🥶";
+            }
+            
+            if (year === 2021) {
+                return isWin
+                    ? "불장 미쳤다 ㅋㅋㅋ 숨만 쉬어도 계좌 불어남. 졸업 축하한다! 🎓"
+                    : "헝다 빔 맞고 부처 빔 맞고... 롱충이들 뚝배기 다 깨짐 ㅋㅋㅋ 과욕이 부른 참사 📉";
+            }
+
+            if (year === 2022) {
+                return isWin
+                    ? "하락장에 숏 쳐서 발라먹음 ㅋㅋㅋ 남들 한강물 체크할 때 혼자 샴페인 터뜨리누? 🥂"
+                    : "루나 터지고 FTX 터지고... 코인판 망했나 싶었제? 빙하기 제대로 옴 ㅠㅠ 🥶";
+            }
+
+            // 2023+ / Default
+            return isWin
+                ? "ETF 승인 떡밥 굴리면서 기관 형님들 들어오심. 저점 매수 야무지게 했누? 😋"
+                : "게리 겐슬러가 또 시비텀 ㅋㅋㅋ SEC 규제 악재로 개미들만 털려나감 🐜";
+        };
+
+        // Simulate "Back-Market" Data Retrieval
+        const simulateMarketResult = (assetId, days) => {
+            const asset = ASSETS.find(a => a.id === assetId);
+            
+            // Random date between 2020 and 2023
+            const startTimestamp = new Date(2020, 0, 1).getTime();
+            const endTimestamp = new Date(2023, 11, 31).getTime();
+            const randomStart = new Date(startTimestamp + Math.random() * (endTimestamp - startTimestamp));
+            const randomEnd = new Date(randomStart.getTime() + days * 24 * 60 * 60 * 1000);
+            
+            // Simulate ROI based on volatility + randomness
+            const noise = (Math.random() - 0.48) * 1.2; 
+            const volatilityFactor = asset.volatility * Math.sqrt(days);
+            const roi = noise * volatilityFactor * 10;
+
+            const narrative = getNarrative(assetId, roi, randomStart);
+            const hash = Array.from({length: 16}, () => Math.floor(Math.random()*16).toString(16)).join('');
+
+            return {
+                startDate: randomStart,
+                endDate: randomEnd,
+                roi: parseFloat(roi.toFixed(2)),
+                hash: `server_seed_${hash}...`,
+                narrative: narrative
+            };
+        };
+
+        // --- Components ---
+
+        const Card = ({ children, className = "", onClick, active = false }) => (
+            <div 
+                onClick={onClick}
+                className={`
+                    relative overflow-hidden rounded-xl border transition-all duration-300 backdrop-blur-md
+                    ${active 
+                        ? 'border-cyan-500/50 bg-cyan-900/20 shadow-[0_0_20px_rgba(6,182,212,0.2)]' 
+                        : 'border-white/10 bg-slate-900/40 hover:border-white/20 hover:bg-slate-800/40'}
+                    ${className}
+                `}
+            >
+                {active && <div className="absolute inset-0 bg-gradient-to-tr from-cyan-500/10 to-transparent pointer-events-none" />}
+                {children}
+            </div>
+        );
+
+        const NavButton = ({ icon: Icon, label, active, onClick }) => (
+            <button 
+                onClick={onClick}
+                className={`flex flex-col items-center justify-center w-full py-3 transition-colors ${
+                    active ? 'text-cyan-400' : 'text-slate-500 hover:text-slate-300'
+                }`}
+            >
+                <Icon size={24} strokeWidth={active ? 2.5 : 2} className={active ? "drop-shadow-[0_0_8px_rgba(34,211,238,0.8)]" : ""} />
+                <span className="text-[10px] mt-1 font-mono uppercase tracking-wider">{label}</span>
+            </button>
+        );
+
+        // --- Main Application ---
+
+        function JohnSmithEX() {
+            const [activeTab, setActiveTab] = useState('bet');
+            const [user, setUser] = useState({
+                balance: INITIAL_BALANCE,
+                level: 1,
+                xp: 0,
+                nextLevelXp: 1000,
+                plays: 0,
+                wins: 0,
+                streak: 0,
+                referralCode: 'RICH_GUY_82',
+                referralCount: 0,
+                history: [],
+                lastDailyClaim: null
+            });
+
+            // Betting State
+            const [selectedAsset, setSelectedAsset] = useState(ASSETS[0]);
+            const [selectedPeriod, setSelectedPeriod] = useState(PERIODS[1]); 
+            const [betAmount, setBetAmount] = useState(100);
+            
+            // Game State
+            const [gameState, setGameState] = useState('idle'); 
+            const [loadingText, setLoadingText] = useState('SCANNING...');
+            const [result, setResult] = useState(null);
+
+            // Referral State
+            const [inputReferral, setInputReferral] = useState('');
+            const [referralStatus, setReferralStatus] = useState('idle'); // idle, success, error
+
+            const handleExecute = () => {
+                if (user.balance < betAmount) {
+                    alert("포인트 부족함;; 충전 ㄱㄱ (사실 충전기능 없음 ㅋ)");
+                    return;
+                }
+
+                setGameState('spinning');
+                
+                const loadingStates = ['과거 차트 스캔중...', '떡상 구간 탐색...', '세력 매집 포착...', '흑우들 찾는중...'];
+                let step = 0;
+                const interval = setInterval(() => {
+                    setLoadingText(loadingStates[step % loadingStates.length]);
+                    step++;
+                }, 250);
+                
+                setTimeout(() => {
+                    clearInterval(interval);
+                    const simResult = simulateMarketResult(selectedAsset.id, selectedPeriod.days);
+                    const rawPnl = betAmount * (simResult.roi / 100);
+                    const isWin = rawPnl >= 0;
+
+                    let streakBonus = 1;
+                    let newStreak = isWin ? user.streak + 1 : 0;
+                    if (isWin && newStreak > 1) {
+                        streakBonus = 1 + (newStreak * 0.1); 
+                    }
+                    
+                    const finalPnl = rawPnl * streakBonus;
+                    
+                    // XP Calculation (Bet Amount + Win Bonus)
+                    const xpGained = Math.floor(betAmount * 0.1) + (isWin ? 50 : 0);
+                    let newXp = user.xp + xpGained;
+                    let newLevel = user.level;
+                    let newNextXp = user.nextLevelXp;
+
+                    if (newXp >= user.nextLevelXp) {
+                        newLevel += 1;
+                        newXp = newXp - user.nextLevelXp;
+                        newNextXp = Math.floor(newNextXp * 1.5);
+                    }
+
+                    const newHistoryItem = {
+                        id: Date.now(),
+                        asset: selectedAsset,
+                        period: selectedPeriod,
+                        bet: betAmount,
+                        ...simResult,
+                        pnl: finalPnl,
+                        streakBonus: streakBonus > 1 ? streakBonus : null,
+                        result: isWin ? 'WIN' : 'LOSS',
+                        timestamp: new Date()
+                    };
+
+                    setResult(newHistoryItem);
+                    setUser(prev => ({
+                        ...prev,
+                        balance: prev.balance + finalPnl,
+                        plays: prev.plays + 1,
+                        wins: isWin ? prev.wins + 1 : prev.wins,
+                        streak: newStreak,
+                        level: newLevel,
+                        xp: newXp,
+                        nextLevelXp: newNextXp,
+                        history: [newHistoryItem, ...prev.history]
+                    }));
+
+                    setGameState('result');
+                }, 1500); 
+            };
+
+            const resetGame = () => {
+                setGameState('idle');
+                setResult(null);
+            };
+
+            const handleClaimDaily = () => {
+                const today = new Date().toDateString();
+                if (user.lastDailyClaim === today) {
+                    alert("오늘 보너스 이미 챙겼잖아 ㅡㅡ 내일 오셈");
+                    return;
+                }
+                setUser(prev => ({
+                    ...prev,
+                    balance: prev.balance + DAILY_BONUS,
+                    lastDailyClaim: today
+                }));
+                alert(`출석 보상! ${formatMoney(DAILY_BONUS)} PTS 꺼억~ 😋`);
+            };
+
+            const handleReferralSubmit = () => {
+                if (inputReferral.trim().length < 5) {
+                    alert("코드가 너무 짧음;; 제대로 입력해봐");
+                    return;
+                }
+                // Simulate success
+                setReferralStatus('success');
+                setUser(prev => ({
+                    ...prev,
+                    balance: prev.balance + REFERRAL_BONUS
+                }));
+                setTimeout(() => setReferralStatus('idle'), 3000);
+            };
+
+            const renderBetScreen = () => (
+                <div className="space-y-6 pb-24 animate-fadeIn">
+                    <div className="flex justify-between items-center mb-2">
+                        <div>
+                            <div className="flex items-center gap-2 mb-1">
+                                <span className="text-xs font-bold px-1.5 py-0.5 bg-yellow-500 text-black rounded uppercase">LV.{user.level}</span>
+                                <div className="w-20 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                                    <div className="h-full bg-yellow-500" style={{ width: `${(user.xp / user.nextLevelXp) * 100}%` }} />
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div className="text-3xl font-bold font-mono text-white tracking-tighter drop-shadow-lg transition-all duration-500">
+                                    {formatMoney(user.balance)}
+                                </div>
+                                {user.streak > 1 && (
+                                    <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-500/20 border border-orange-500/50 text-orange-400 text-xs font-bold animate-pulse">
+                                        <Flame size={12} fill="currentColor" /> {user.streak}연승 중!
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                        <button 
+                            onClick={handleClaimDaily}
+                            className={`flex flex-col items-center justify-center w-12 h-12 rounded-full border border-white/10 ${user.lastDailyClaim === new Date().toDateString() ? 'bg-slate-800 opacity-50' : 'bg-gradient-to-br from-cyan-500 to-blue-600 animate-pulse hover:scale-110 transition-transform'}`}
+                        >
+                            <Gift size={20} className="text-white" />
+                        </button>
+                    </div>
+
+                    <section>
+                        <div className="flex items-center gap-2 mb-3">
+                            <Activity size={16} className="text-cyan-400" />
+                            <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider">종목 픽 (Pick)</h3>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                            {ASSETS.map(asset => (
+                                <Card 
+                                    key={asset.id} 
+                                    active={selectedAsset.id === asset.id} 
+                                    onClick={() => setSelectedAsset(asset)}
+                                    className="p-3 cursor-pointer group"
+                                >
+                                    <div className={`w-8 h-8 rounded-full mb-2 bg-gradient-to-br ${asset.color} opacity-80 group-hover:opacity-100 shadow-lg`} />
+                                    <div className="font-bold text-sm text-white">{asset.id}</div>
+                                    <div className="text-[10px] text-slate-400">변동성: {asset.volatility}배</div>
+                                </Card>
+                            ))}
+                        </div>
+                    </section>
+
+                    <section>
+                        <div className="flex items-center gap-2 mb-3">
+                            <History size={16} className="text-cyan-400" />
+                            <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider">존버 기간 설정</h3>
+                        </div>
+                        <div className="flex bg-slate-900/50 p-1 rounded-lg border border-white/5">
+                            {PERIODS.map(period => (
+                                <button
+                                    key={period.label}
+                                    onClick={() => setSelectedPeriod(period)}
+                                    className={`flex-1 py-2 text-xs font-mono font-bold rounded-md transition-all ${
+                                        selectedPeriod.label === period.label 
+                                            ? 'bg-slate-700 text-cyan-400 shadow-md ring-1 ring-cyan-500/30' 
+                                            : 'text-slate-500 hover:text-slate-300'
+                                    }`}
+                                >
+                                    {period.label}
+                                </button>
+                            ))}
+                        </div>
+                    </section>
+
+                    <section>
+                        <div className="flex justify-between items-center mb-3">
+                            <div className="flex items-center gap-2">
+                                <DollarSign size={16} className="text-cyan-400" />
+                                <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider">배팅 금액 (야수의 심장)</h3>
+                            </div>
+                            <span className="text-xs text-cyan-500 font-mono">한도: {formatMoney(2000 + (user.level * 500))}</span>
+                        </div>
+                        <div className="bg-slate-900/50 p-4 rounded-xl border border-white/10">
+                            <div className="flex justify-between items-end mb-4">
+                                <span className="text-2xl font-bold font-mono text-white">{betAmount}</span>
+                                <span className="text-xs text-slate-500 mb-1">PTS</span>
+                            </div>
+                            <input 
+                                type="range" 
+                                min="10" 
+                                max={2000 + (user.level * 500)} 
+                                step="10" 
+                                value={betAmount} 
+                                onChange={(e) => setBetAmount(parseInt(e.target.value))}
+                                className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+                            />
+                            <div className="flex justify-between mt-2">
+                                <button onClick={() => setBetAmount(100)} className="text-[10px] px-2 py-1 rounded bg-slate-800 text-slate-400 hover:text-white border border-slate-700">쫄?</button>
+                                <button onClick={() => setBetAmount(1000)} className="text-[10px] px-2 py-1 rounded bg-slate-800 text-slate-400 hover:text-white border border-slate-700">1K</button>
+                                <button onClick={() => setBetAmount(2000 + (user.level * 500))} className="text-[10px] px-2 py-1 rounded bg-slate-800 text-slate-400 hover:text-white border border-slate-700">풀매수</button>
+                            </div>
+                        </div>
+                    </section>
+
+                    <button
+                        onClick={handleExecute}
+                        disabled={gameState === 'spinning'}
+                        className={`
+                            w-full py-4 rounded-xl font-bold text-lg uppercase tracking-widest transition-all duration-200
+                            shadow-[0_0_20px_rgba(6,182,212,0.3)]
+                            ${gameState === 'spinning' 
+                                ? 'bg-slate-800 text-cyan-400 cursor-wait border border-cyan-900/50' 
+                                : 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white border-t border-white/20 active:scale-[0.98] active:shadow-none'}
+                        `}
+                    >
+                        <div className="flex items-center justify-center gap-2">
+                            {gameState === 'spinning' ? (
+                                <RefreshCcw className="animate-spin" size={20} />
+                            ) : (
+                                <Zap className={gameState === 'spinning' ? '' : "animate-pulse"} size={20} fill="currentColor" />
+                            )}
+                            <span className={gameState === 'spinning' ? "animate-pulse font-mono" : ""}>
+                                {gameState === 'spinning' ? loadingText : '딸깍 (가즈아)'}
+                            </span>
+                        </div>
+                    </button>
+
+                    <div className="text-center">
+                        <p className="text-[10px] text-slate-600 font-mono">
+                            시스템이 과거 차트 랜덤으로 긁어오는 중...
+                            <br/>주작 아님 ㅋ (Provably Fair v1.0)
+                        </p>
+                    </div>
+                </div>
+            );
+
+            const renderResultModal = () => {
+                if (gameState !== 'result' || !result) return null;
+                const isWin = result.pnl >= 0;
+
+                return (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+                        <div className="w-full max-w-sm bg-slate-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden relative">
+                            
+                            <div className={`h-1 w-full ${isWin ? 'bg-green-500' : 'bg-rose-500'} shadow-[0_0_15px_currentColor]`} />
+
+                            <div className="p-6 text-center space-y-4">
+                                
+                                <div>
+                                    <h2 className="text-xs text-slate-400 font-mono uppercase tracking-[0.2em] mb-2">정산 결과</h2>
+                                    <div className={`text-4xl font-black italic tracking-tighter ${isWin ? 'text-green-400 drop-shadow-[0_0_10px_rgba(74,222,128,0.5)]' : 'text-rose-500 drop-shadow-[0_0_10px_rgba(244,63,94,0.5)]'}`}>
+                                        {isWin ? '익절 🚀' : '손절 📉'}
+                                    </div>
+                                    {result.streakBonus && (
+                                        <div className="mt-2 inline-flex items-center gap-1 px-2 py-1 rounded bg-orange-500/20 text-orange-400 text-xs font-bold animate-bounce">
+                                            <Flame size={12} fill="currentColor" /> 연승 보너스! 폼 미쳤다 x{result.streakBonus.toFixed(1)}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="py-4 border-y border-dashed border-white/10 relative">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <div className="text-[10px] text-slate-500 uppercase font-mono">수익률 (ROI)</div>
+                                            <div className={`text-xl font-bold font-mono ${result.roi >= 0 ? 'text-green-400' : 'text-rose-400'}`}>
+                                                {result.roi > 0 ? '+' : ''}{result.roi}%
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div className="text-[10px] text-slate-500 uppercase font-mono">정산금</div>
+                                            <div className={`text-xl font-bold font-mono ${isWin ? 'text-green-400' : 'text-rose-400'}`}>
+                                                {result.pnl > 0 ? '+' : ''}{result.pnl.toFixed(0)}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Narrative Log Section (NEW) */}
+                                <div className="bg-slate-950/80 p-3 rounded-lg border-l-2 border-cyan-500 text-left relative overflow-hidden group">
+                                    <div className="absolute top-0 right-0 p-1 opacity-20">
+                                        <Terminal size={12} />
+                                    </div>
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-pulse"></div>
+                                        <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-wider">차트 분석 (팩트폭격)</span>
+                                    </div>
+                                    <p className="text-xs text-slate-300 leading-relaxed font-mono">
+                                        <span className="text-slate-500">타임머신 도착: {result.startDate.getFullYear()}년</span><br/>
+                                        >> {result.narrative}
+                                    </p>
+                                </div>
+
+                                <div className="bg-black/40 rounded-lg p-3 text-left space-y-2 border border-white/5">
+                                    <div className="flex justify-between items-center text-xs">
+                                        <span className="text-slate-500">자산(코인)</span>
+                                        <span className="text-slate-200 font-bold">{result.asset.name}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center text-xs">
+                                        <span className="text-slate-500">시작일</span>
+                                        <span className="text-cyan-400 font-mono font-bold">{formatDate(result.startDate)}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center text-xs">
+                                        <span className="text-slate-500">존버 기간</span>
+                                        <span className="text-slate-300 font-mono">{result.period.label}</span>
+                                    </div>
+                                </div>
+                                
+                                <div className="flex items-center gap-2 justify-center opacity-50">
+                                    <ShieldCheck size={10} className="text-cyan-600" />
+                                    <code className="text-[8px] text-slate-600 truncate max-w-[200px]">{result.hash}</code>
+                                </div>
+
+                                <button 
+                                    onClick={resetGame}
+                                    className="w-full py-3 bg-white text-black font-bold uppercase rounded-lg hover:bg-slate-200 transition active:scale-95"
+                                >
+                                    한 판 더? (리벤지 가자)
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            const renderLeaderboard = () => (
+                <div className="pb-24 animate-fadeIn">
+                    <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                        <Trophy className="text-yellow-400" /> 랭킹 (서열 정리)
+                    </h2>
+                    
+                    <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide">
+                        {['오늘', '주간', '전체'].map((filter, i) => (
+                            <button key={filter} className={`px-4 py-1 rounded-full text-xs font-bold border ${i === 2 ? 'bg-cyan-900/30 border-cyan-500/50 text-cyan-400' : 'bg-transparent border-slate-700 text-slate-500'}`}>
+                                {filter}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="space-y-2">
+                        {MOCK_LEADERBOARD.map((entry, idx) => (
+                            <div key={entry.id} className="flex items-center justify-between p-3 bg-slate-800/40 border border-white/5 rounded-lg backdrop-blur-sm">
+                                <div className="flex items-center gap-3">
+                                    <div className={`w-6 h-6 flex items-center justify-center text-xs font-bold rounded ${idx === 0 ? 'bg-yellow-500 text-black' : idx === 1 ? 'bg-slate-300 text-black' : idx === 2 ? 'bg-orange-700 text-white' : 'bg-slate-800 text-slate-500'}`}>
+                                        {idx + 1}
+                                    </div>
+                                    <div>
+                                        <div className="text-sm font-bold text-slate-200">{entry.handle}</div>
+                                        <div className="text-[10px] text-slate-500">{entry.plays}판 플레이 • 승률 {entry.winRate}%</div>
+                                    </div>
+                                </div>
+                                <div className={`text-sm font-mono font-bold ${entry.profit > 0 ? 'text-green-400' : 'text-rose-500'}`}>
+                                    {entry.profit > 0 ? '+' : ''}{formatMoney(entry.profit)}
+                                </div>
+                            </div>
+                        ))}
+                        <div className="mt-6 p-3 bg-cyan-900/20 border border-cyan-500/30 rounded-lg flex items-center justify-between relative overflow-hidden">
+                            <div className="absolute left-0 top-0 bottom-0 w-1 bg-cyan-500" />
+                            <div className="flex items-center gap-3 pl-2">
+                                <div className="text-xs font-bold text-cyan-400">#99+</div>
+                                <div className="text-sm font-bold text-white">니 위치</div>
+                            </div>
+                            <div className="text-sm font-mono font-bold text-white">{formatMoney(user.balance - INITIAL_BALANCE)}</div>
+                        </div>
+                    </div>
+                </div>
+            );
+
+            const renderProfile = () => (
+                <div className="pb-24 animate-fadeIn">
+                    <div className="flex items-center gap-4 mb-6">
+                        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 border-2 border-cyan-500/50 flex items-center justify-center shadow-[0_0_15px_rgba(6,182,212,0.3)] relative">
+                            <User size={32} className="text-cyan-400" />
+                            <div className="absolute -bottom-1 -right-1 bg-yellow-500 text-black text-[10px] font-bold px-1.5 py-0.5 rounded-full border border-slate-900">
+                                LV.{user.level}
+                            </div>
+                        </div>
+                        <div className="flex-1">
+                            <div className="flex justify-between items-center">
+                                <h2 className="text-xl font-bold text-white">Player_One</h2>
+                                <span className="text-xs text-slate-500 font-mono">ID: #8821a</span>
+                            </div>
+                            <div className="mt-2 w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                                <div className="h-full bg-yellow-500 animate-shimmer" style={{ width: `${(user.xp / user.nextLevelXp) * 100}%` }}></div>
+                            </div>
+                            <div className="flex justify-between mt-1">
+                                <span className="text-[10px] text-slate-500">{user.xp} XP</span>
+                                <span className="text-[10px] text-slate-500">다음 레벨: {user.nextLevelXp} XP</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Referral Center - NEW */}
+                    <div className="mb-6">
+                         <div className="bg-gradient-to-r from-blue-900/40 to-cyan-900/40 p-4 rounded-xl border border-cyan-500/30 relative overflow-hidden">
+                            <div className="flex items-center gap-2 mb-3">
+                                <Users size={16} className="text-cyan-400" />
+                                <h3 className="text-sm font-bold text-white uppercase tracking-wider">친구 초대 이벤트 (다단계 아님 ㅋ)</h3>
+                            </div>
+                            
+                            <div className="mb-4">
+                                <div className="text-[10px] text-slate-400 mb-1">니 초대 코드</div>
+                                <div className="flex gap-2">
+                                    <div className="flex-1 bg-black/30 border border-white/10 rounded-lg px-3 py-2 font-mono text-center text-lg tracking-widest text-white">
+                                        {user.referralCode}
+                                    </div>
+                                    <button className="bg-slate-700 hover:bg-slate-600 text-white p-2 rounded-lg transition-colors">
+                                        <Copy size={18} />
+                                    </button>
+                                </div>
+                                <p className="text-[10px] text-cyan-400 mt-1">
+                                    친구 꼬셔서 데려오면 <span className="font-bold">{formatMoney(REFERRAL_BONUS)} PTS</span> 줌! (개꿀)
+                                </p>
+                            </div>
+
+                            <div className="border-t border-white/10 pt-3">
+                                <div className="text-[10px] text-slate-400 mb-1">친구 코드 입력</div>
+                                <div className="flex gap-2">
+                                    <input 
+                                        type="text" 
+                                        placeholder="친구 코드 입력 ㄱㄱ" 
+                                        value={inputReferral}
+                                        onChange={(e) => setInputReferral(e.target.value.toUpperCase())}
+                                        disabled={referralStatus === 'success'}
+                                        className="flex-1 bg-slate-900/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-cyan-500 outline-none uppercase font-mono placeholder:normal-case placeholder:text-slate-600"
+                                    />
+                                    <button 
+                                        onClick={handleReferralSubmit}
+                                        disabled={referralStatus === 'success'}
+                                        className={`px-4 rounded-lg font-bold text-xs transition-colors ${referralStatus === 'success' ? 'bg-green-500 text-white' : 'bg-cyan-600 hover:bg-cyan-500 text-white'}`}
+                                    >
+                                        {referralStatus === 'success' ? <CheckCircle2 size={16}/> : '제출'}
+                                    </button>
+                                </div>
+                                {referralStatus === 'success' && (
+                                    <p className="text-[10px] text-green-400 mt-1 animate-pulse">
+                                        추천인 등록 완료! +{formatMoney(REFERRAL_BONUS)} PTS 꺼억~
+                                    </p>
+                                )}
+                            </div>
+                         </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 mb-8">
+                        <div className="bg-slate-800/40 p-3 rounded-xl border border-white/5">
+                            <div className="text-[10px] text-slate-500 uppercase mb-1">최대 연승</div>
+                            <div className="text-lg font-bold text-orange-400 flex items-center gap-1">
+                                <Flame size={14} fill="currentColor" /> {user.streak}
+                            </div>
+                        </div>
+                        <div className="bg-slate-800/40 p-3 rounded-xl border border-white/5">
+                            <div className="text-[10px] text-slate-500 uppercase mb-1">초대 인원</div>
+                            <div className="text-lg font-bold text-white flex items-center gap-1">
+                                <Users size={14} /> {user.referralCount}
+                            </div>
+                        </div>
+                        <div className="bg-slate-800/40 p-3 rounded-xl border border-white/5 col-span-2">
+                            <div className="text-[10px] text-slate-500 uppercase mb-1">순수익 (꺼억)</div>
+                            <div className={`text-xl font-mono font-bold ${user.balance >= INITIAL_BALANCE ? 'text-green-400' : 'text-rose-500'}`}>
+                                {formatMoney(user.balance - INITIAL_BALANCE)}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h3 className="text-sm font-bold text-slate-300 mb-3 flex items-center gap-2">
+                            <Activity size={14} /> 최근 기록
+                        </h3>
+                        {user.history.length === 0 ? (
+                            <div className="text-center py-8 text-slate-600 text-xs">아직 기록 없음. 쫄? 한판 돌려봐 ㅋ</div>
+                        ) : (
+                            <div className="space-y-2">
+                                {user.history.map((item) => (
+                                    <div key={item.id} className="p-3 bg-slate-900 border border-white/5 rounded-lg flex justify-between items-center hover:border-white/10 transition">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-1 h-8 rounded-full ${item.pnl >= 0 ? 'bg-green-500' : 'bg-rose-500'}`} />
+                                            <div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-sm font-bold text-slate-200">{item.asset.id}</span>
+                                                    <span className="text-[10px] px-1.5 rounded bg-slate-800 text-slate-400">{item.period.label}</span>
+                                                </div>
+                                                <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+                                                    {formatDate(item.startDate)}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="text-right">
+                                            <div className={`text-sm font-mono font-bold ${item.pnl >= 0 ? 'text-green-400' : 'text-rose-500'}`}>
+                                                {item.pnl > 0 ? '+' : ''}{item.pnl.toFixed(0)}
+                                            </div>
+                                            {item.streakBonus && (
+                                                <div className="text-[8px] text-orange-400 font-bold">연승 버프 x{item.streakBonus.toFixed(1)}</div>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+
+            return (
+                <div className="min-h-screen bg-slate-950 text-slate-200 font-sans select-none overflow-hidden relative">
+                    <div className="fixed inset-0 pointer-events-none z-0 opacity-5 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] bg-[length:100%_2px,3px_100%]"></div>
+                    
+                    <div className="fixed -top-40 -right-40 w-96 h-96 bg-cyan-600/20 rounded-full blur-[100px] pointer-events-none" />
+                    <div className="fixed -bottom-40 -left-40 w-96 h-96 bg-purple-600/20 rounded-full blur-[100px] pointer-events-none" />
+
+                    <main className="relative z-10 max-w-md mx-auto h-screen flex flex-col bg-slate-950/80 shadow-2xl border-x border-white/5">
+                        
+                        <header className="p-4 border-b border-white/5 bg-slate-900/50 backdrop-blur-md sticky top-0 z-20 flex justify-between items-center">
+                            <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 bg-cyan-500 rounded-lg flex items-center justify-center font-black text-slate-900 transform -skew-x-12 shadow-[0_0_10px_rgba(6,182,212,0.5)]">
+                                    EX
+                                </div>
+                                <h1 className="text-lg font-bold tracking-tight text-white">
+                                    <span className="text-slate-400">John</span>Smith<span className="text-cyan-400">EX</span>
+                                </h1>
+                            </div>
+                            <div className="flex items-center gap-2 text-xs font-mono text-cyan-500">
+                                <div className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
+                                LIVE
+                            </div>
+                        </header>
+
+                        <div className="flex-1 overflow-y-auto p-4 scrollbar-hide">
+                            {activeTab === 'bet' && renderBetScreen()}
+                            {activeTab === 'leaderboard' && renderLeaderboard()}
+                            {activeTab === 'profile' && renderProfile()}
+                        </div>
+
+                        <nav className="border-t border-white/10 bg-slate-900/90 backdrop-blur-xl absolute bottom-0 w-full z-30 pb-safe">
+                            <div className="grid grid-cols-3 h-16">
+                                <NavButton 
+                                    icon={TrendingUp} 
+                                    label="배팅" 
+                                    active={activeTab === 'bet'} 
+                                    onClick={() => setActiveTab('bet')} 
+                                />
+                                <NavButton 
+                                    icon={Trophy} 
+                                    label="랭킹" 
+                                    active={activeTab === 'leaderboard'} 
+                                    onClick={() => setActiveTab('leaderboard')} 
+                                />
+                                <NavButton 
+                                    icon={User} 
+                                    label="내정보" 
+                                    active={activeTab === 'profile'} 
+                                    onClick={() => setActiveTab('profile')} 
+                                />
+                            </div>
+                        </nav>
+
+                        {renderResultModal()}
+
+                    </main>
+                </div>
+            );
+        }
+
+        // 앱을 화면에 그리기
+        const root = createRoot(document.getElementById('root'));
+        root.render(<JohnSmithEX />);
+    </script>
+</body>
+</html>
