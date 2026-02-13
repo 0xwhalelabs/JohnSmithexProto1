@@ -11,7 +11,8 @@ import {
   RefreshCcw, 
   ShieldCheck,
   ChevronRight,
-  AlertTriangle
+  AlertTriangle,
+  Flame // Added for Streak/Hype
 } from 'lucide-react';
 
 /**
@@ -19,17 +20,17 @@ import {
  * * Design Philosophy:
  * - Glassmorphism & Neon accents
  * - Instant gratification (Click -> Result)
- * - Gamified Trading
+ * - Gamified Trading (Streak System Added)
  */
 
 // --- Constants & Mock Data ---
 
 const ASSETS = [
-  { id: 'SOL', name: 'Solana', color: 'from-purple-500 to-indigo-500', volatility: 1.5 },
-  { id: 'AVAX', name: 'Avalanche', color: 'from-red-500 to-rose-600', volatility: 1.4 },
-  { id: 'DOGE', name: 'Dogecoin', color: 'from-yellow-400 to-orange-500', volatility: 2.2 },
-  { id: 'ETH', name: 'Ethereum', color: 'from-slate-400 to-slate-600', volatility: 0.8 },
-  { id: 'BTC', name: 'Bitcoin', color: 'from-orange-400 to-orange-600', volatility: 0.6 },
+  { id: 'SOL', name: 'Solana', color: 'from-purple-500 to-indigo-500', volatility: 1.8 }, // Volatility increased for hype
+  { id: 'AVAX', name: 'Avalanche', color: 'from-red-500 to-rose-600', volatility: 1.6 },
+  { id: 'DOGE', name: 'Dogecoin', color: 'from-yellow-400 to-orange-500', volatility: 2.5 },
+  { id: 'ETH', name: 'Ethereum', color: 'from-slate-400 to-slate-600', volatility: 1.0 },
+  { id: 'BTC', name: 'Bitcoin', color: 'from-orange-400 to-orange-600', volatility: 0.8 },
 ];
 
 const PERIODS = [
@@ -65,7 +66,6 @@ const formatDate = (date) => {
 };
 
 // Simulate "Back-Market" Data Retrieval
-// In a real app, this would query a historical price DB based on a random seed
 const simulateMarketResult = (assetId, days) => {
   const asset = ASSETS.find(a => a.id === assetId);
   
@@ -75,11 +75,11 @@ const simulateMarketResult = (assetId, days) => {
   const randomStart = new Date(startTimestamp + Math.random() * (endTimestamp - startTimestamp));
   const randomEnd = new Date(randomStart.getTime() + days * 24 * 60 * 60 * 1000);
   
-  // Simulate ROI based on volatility + randomness (biased slightly negative/positive)
-  // Logic: (Random(-1 to 1) * Volatility * sqrt(days))
-  const noise = (Math.random() - 0.48); // Slightly positive bias for fun
+  // Simulate ROI based on volatility + randomness
+  // Hype Logic: Slightly more extreme outcomes to make it exciting
+  const noise = (Math.random() - 0.48) * 1.2; 
   const volatilityFactor = asset.volatility * Math.sqrt(days);
-  const roi = noise * volatilityFactor * 10; // Simple simulation formula
+  const roi = noise * volatilityFactor * 10;
 
   // Generate a fake hash for "Fairness"
   const hash = Array.from({length: 16}, () => Math.floor(Math.random()*16).toString(16)).join('');
@@ -141,6 +141,7 @@ export default function JohnSmithEX() {
     balance: INITIAL_BALANCE,
     plays: 0,
     wins: 0,
+    streak: 0, // Hype factor: Winning Streak
     history: []
   });
 
@@ -151,10 +152,8 @@ export default function JohnSmithEX() {
   
   // Game State
   const [gameState, setGameState] = useState('idle'); // idle, spinning, result
+  const [loadingText, setLoadingText] = useState('SCANNING...');
   const [result, setResult] = useState(null);
-
-  // Animations & Refs
-  const resultRef = useRef(null);
 
   const handleExecute = () => {
     if (user.balance < betAmount) {
@@ -164,11 +163,29 @@ export default function JohnSmithEX() {
 
     setGameState('spinning');
     
+    // Hype Animation: Cycle through random years/actions
+    const loadingStates = ['SCANNING 2021...', 'TARGETING...', 'FETCHING...', 'ANALYZING...'];
+    let step = 0;
+    const interval = setInterval(() => {
+      setLoadingText(loadingStates[step % loadingStates.length]);
+      step++;
+    }, 250);
+    
     // Simulate network/calculation delay (The "Ttalgak" feeling)
     setTimeout(() => {
+      clearInterval(interval);
       const simResult = simulateMarketResult(selectedAsset.id, selectedPeriod.days);
-      const pnl = betAmount * (simResult.roi / 100);
-      const isWin = pnl >= 0;
+      const rawPnl = betAmount * (simResult.roi / 100);
+      const isWin = rawPnl >= 0;
+
+      // Hype Logic: Streak Bonus
+      let streakBonus = 1;
+      let newStreak = isWin ? user.streak + 1 : 0;
+      if (isWin && newStreak > 1) {
+        streakBonus = 1 + (newStreak * 0.1); // 10% bonus per streak
+      }
+      
+      const finalPnl = rawPnl * streakBonus;
 
       const newHistoryItem = {
         id: Date.now(),
@@ -176,7 +193,8 @@ export default function JohnSmithEX() {
         period: selectedPeriod,
         bet: betAmount,
         ...simResult,
-        pnl: pnl,
+        pnl: finalPnl,
+        streakBonus: streakBonus > 1 ? streakBonus : null,
         result: isWin ? 'WIN' : 'LOSS',
         timestamp: new Date()
       };
@@ -184,14 +202,15 @@ export default function JohnSmithEX() {
       setResult(newHistoryItem);
       setUser(prev => ({
         ...prev,
-        balance: prev.balance + pnl,
+        balance: prev.balance + finalPnl,
         plays: prev.plays + 1,
         wins: isWin ? prev.wins + 1 : prev.wins,
+        streak: newStreak,
         history: [newHistoryItem, ...prev.history]
       }));
 
       setGameState('result');
-    }, 1200); // 1.2s tension
+    }, 1500); // Slightly longer for hype
   };
 
   const resetGame = () => {
@@ -205,13 +224,19 @@ export default function JohnSmithEX() {
       <div className="flex justify-between items-center mb-2">
         <div>
           <h2 className="text-xs text-slate-400 font-mono tracking-widest uppercase mb-1">Current Balance</h2>
-          <div className="text-3xl font-bold font-mono text-white tracking-tighter drop-shadow-lg">
-            {formatMoney(user.balance)}
-            <span className="text-sm text-cyan-500 ml-1">PTS</span>
+          <div className="flex items-center gap-2">
+             <div className="text-3xl font-bold font-mono text-white tracking-tighter drop-shadow-lg transition-all duration-500">
+               {formatMoney(user.balance)}
+             </div>
+             {user.streak > 1 && (
+               <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-500/20 border border-orange-500/50 text-orange-400 text-xs font-bold animate-pulse">
+                 <Flame size={12} fill="currentColor" /> {user.streak} STREAK
+               </div>
+             )}
           </div>
         </div>
         <div className="px-3 py-1 rounded-full bg-slate-800/80 border border-slate-700 text-xs font-mono text-slate-300">
-          PROTOTYPE v0.9
+          PROTOTYPE v1.0
         </div>
       </div>
 
@@ -300,7 +325,7 @@ export default function JohnSmithEX() {
           w-full py-4 rounded-xl font-bold text-lg uppercase tracking-widest transition-all duration-200
           shadow-[0_0_20px_rgba(6,182,212,0.3)]
           ${gameState === 'spinning' 
-            ? 'bg-slate-800 text-slate-500 cursor-wait border border-slate-700' 
+            ? 'bg-slate-800 text-cyan-400 cursor-wait border border-cyan-900/50' 
             : 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white border-t border-white/20 active:scale-[0.98] active:shadow-none'}
         `}
       >
@@ -310,7 +335,9 @@ export default function JohnSmithEX() {
           ) : (
              <Zap className={gameState === 'spinning' ? '' : "animate-pulse"} size={20} fill="currentColor" />
           )}
-          <span>{gameState === 'spinning' ? 'SYNCING TIME...' : 'EXECUTE'}</span>
+          <span className={gameState === 'spinning' ? "animate-pulse font-mono" : ""}>
+            {gameState === 'spinning' ? loadingText : 'EXECUTE'}
+          </span>
         </div>
       </button>
 
@@ -343,6 +370,11 @@ export default function JohnSmithEX() {
               <div className={`text-4xl font-black italic tracking-tighter ${isWin ? 'text-green-400 drop-shadow-[0_0_10px_rgba(74,222,128,0.5)]' : 'text-rose-500 drop-shadow-[0_0_10px_rgba(244,63,94,0.5)]'}`}>
                 {isWin ? 'PROFIT' : 'LOSS'}
               </div>
+              {result.streakBonus && (
+                 <div className="mt-2 inline-flex items-center gap-1 px-2 py-1 rounded bg-orange-500/20 text-orange-400 text-xs font-bold animate-bounce">
+                    <Flame size={12} fill="currentColor" /> STREAK BONUS x{result.streakBonus.toFixed(1)}
+                 </div>
+              )}
             </div>
 
             {/* Numbers */}
@@ -370,12 +402,12 @@ export default function JohnSmithEX() {
                 <span className="text-slate-200 font-bold">{result.asset.name}</span>
               </div>
               <div className="flex justify-between items-center text-xs">
-                 <span className="text-slate-500">Start Date</span>
-                 <span className="text-slate-300 font-mono">{formatDate(result.startDate)}</span>
+                 <span className="text-slate-500">Target Date</span>
+                 <span className="text-cyan-400 font-mono font-bold">{formatDate(result.startDate)}</span>
               </div>
               <div className="flex justify-between items-center text-xs">
-                 <span className="text-slate-500">End Date</span>
-                 <span className="text-slate-300 font-mono">{formatDate(result.endDate)}</span>
+                 <span className="text-slate-500">Duration</span>
+                 <span className="text-slate-300 font-mono">{result.period.label}</span>
               </div>
             </div>
             
@@ -467,9 +499,9 @@ export default function JohnSmithEX() {
            <div className="text-lg font-bold text-white">{user.plays}</div>
         </div>
         <div className="bg-slate-800/40 p-3 rounded-xl border border-white/5">
-           <div className="text-[10px] text-slate-500 uppercase mb-1">Win Rate</div>
-           <div className="text-lg font-bold text-white">
-             {user.plays > 0 ? ((user.wins / user.plays) * 100).toFixed(0) : 0}%
+           <div className="text-[10px] text-slate-500 uppercase mb-1">Max Streak</div>
+           <div className="text-lg font-bold text-orange-400 flex items-center gap-1">
+             <Flame size={14} fill="currentColor" /> {user.streak}
            </div>
         </div>
         <div className="bg-slate-800/40 p-3 rounded-xl border border-white/5 col-span-2">
@@ -507,9 +539,9 @@ export default function JohnSmithEX() {
                   <div className={`text-sm font-mono font-bold ${item.pnl >= 0 ? 'text-green-400' : 'text-rose-500'}`}>
                     {item.pnl > 0 ? '+' : ''}{item.pnl.toFixed(0)}
                   </div>
-                  <div className={`text-[10px] font-mono ${item.roi >= 0 ? 'text-green-500/70' : 'text-rose-500/70'}`}>
-                    {item.roi}%
-                  </div>
+                  {item.streakBonus && (
+                    <div className="text-[8px] text-orange-400 font-bold">STREAK x{item.streakBonus.toFixed(1)}</div>
+                  )}
                 </div>
               </div>
             ))}
